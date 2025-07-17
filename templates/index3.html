@@ -1,0 +1,1156 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>📦 智能仓储自动分析系统</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#3B82F6',
+            secondary: '#6366F1',
+            accent: '#8B5CF6',
+            success: '#10B981',
+            warning: '#F59E0B',
+            danger: '#EF4444',
+            info: '#06B6D4',
+            light: '#F3F4F6',
+            dark: '#1F2937'
+          },
+          fontFamily: {
+            inter: ['Inter', 'system-ui', 'sans-serif'],
+          },
+        },
+      }
+    }
+  </script>
+  <style type="text/tailwindcss">
+    @layer utilities {
+      .content-auto {
+        content-visibility: auto;
+      }
+      .bg-gradient-soft {
+        background: linear-gradient(135deg, #f5f7fa 0%, #e4e5e6 100%);
+      }
+      .card-hover {
+        transition: all 0.3s ease;
+      }
+      .card-hover:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 15px 30px rgba(0, 0, 0, 0.1);
+      }
+      .status-badge {
+        @apply px-3 py-1 rounded-full text-sm font-medium inline-flex items-center;
+      }
+      .status-badge-green {
+        @apply bg-success/10 text-success border border-success/30;
+      }
+      .status-badge-yellow {
+        @apply bg-warning/10 text-warning border border-warning/30;
+      }
+      .status-badge-red {
+        @apply bg-danger/10 text-danger border border-danger/30;
+      }
+      .file-item {
+        @apply flex items-center justify-between p-3 border-b border-gray-100 hover:bg-gray-50 cursor-pointer transition-colors;
+      }
+      .file-item.active {
+        @apply bg-blue-50 border-l-4 border-primary;
+      }
+      .btn-refresh {
+        @apply bg-white border border-gray-300 text-gray-700 font-medium py-2 px-4 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary transition duration-300;
+      }
+      .btn-primary {
+        @apply bg-primary text-white font-medium py-2 px-4 rounded-md hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-opacity-50 transition duration-300;
+      }
+      .notification {
+        @apply fixed bottom-4 right-4 px-6 py-3 rounded-lg shadow-lg transform transition-all duration-300 z-50;
+      }
+      /* 新增：固定文件列表高度并启用滚动 */
+      .fixed-file-list {
+        max-height: calc(100vh + 200px); /* 根据实际情况调整高度 */
+        overflow-y: auto;
+        scrollbar-width: thin;
+        scrollbar-color: #cbd5e1 #f8fafc;
+      }
+      .fixed-file-list::-webkit-scrollbar {
+        width: 6px;
+      }
+      .fixed-file-list::-webkit-scrollbar-track {
+        background: #f8fafc;
+      }
+      .fixed-file-list::-webkit-scrollbar-thumb {
+        background-color: #cbd5e1;
+        border-radius: 3px;
+      }
+      .fixed-file-list::-webkit-scrollbar-thumb:hover {
+        background-color: #94a3b8;
+      }
+
+       /* 新增：文件列表颜色阈值 */
+      .ratio-success {
+        @apply text-success font-bold;
+      }
+      .ratio-warning {
+        @apply text-warning font-bold;
+      }
+      .ratio-danger {
+        @apply text-danger font-bold;
+      }
+    }
+  </style>
+</head>
+<body class="font-inter bg-gradient-soft min-h-screen">
+  <!-- 顶部导航栏 -->
+  <nav class="fixed top-0 left-0 w-full bg-white/80 backdrop-blur-md shadow-sm z-50 transition-all duration-300">
+    <div class="container mx-auto px-4 py-3 flex justify-between items-center">
+      <div class="flex items-center space-x-2">
+        <i class="fa fa-cubes text-primary text-2xl"></i>
+        <span class="text-xl font-bold text-dark">智能仓储自动分析系统</span>
+      </div>
+      <div class="flex items-center space-x-4">
+        <div class="flex items-center space-x-2">
+          <span id="systemStatus" class="status-badge status-badge-yellow">
+            <i class="fa fa-circle mr-1"></i>初始化中
+          </span>
+          <span id="connectionStatus" class="status-badge status-badge-yellow">
+            <i class="fa fa-refresh fa-spin mr-1"></i>连接中
+          </span>
+          <span id="lastUpdateTime" class="text-sm text-gray-500">上次更新: 尚未分析</span>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- 主要内容区域 -->
+  <main class="container mx-auto px-4 pt-24 pb-16">
+    <div class="max-w-7xl mx-auto">
+      <!-- 标题区域 -->
+      <div class="text-center mb-10 animate-fade-in">
+        <h1 class="text-[clamp(2rem,5vw,3rem)] font-bold text-dark mb-4">
+          <i class="fa fa-bar-chart text-primary mr-2"></i> 仓库空间利用率分析
+        </h1>
+        <p class="text-gray-600 text-lg max-w-2xl mx-auto">
+          系统实现自动抓拍，实时分析库存容量
+        </p>
+      </div>
+
+      <!-- 监控状态区域 -->
+      <div class="bg-white rounded-2xl shadow-xl overflow-hidden card-hover mb-6 animate-slide-up">
+        <!-- 添加统一头部 -->
+        <div class="p-4 bg-blue-50 border-b border-gray-100">
+          <h3 class="text-xl font-semibold text-dark flex items-center">
+            <i class="fa fa-folder-open-o text-primary mr-2"></i> 监控库存照片状态
+          </h3>
+        </div>
+        <!-- 保留原有内容 -->
+        <div class="p-6">
+          <div class="space-y-4">
+            <div class="p-4 bg-gray-50 rounded-xl">
+              <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-2">
+                <span class="text-gray-600 mb-2 md:mb-0">监控抓拍图像路径 :</span>
+                <span class="text-primary break-all">./auto_detect/</span>
+              </div>
+              <div class="flex flex-col md:flex-row justify-between items-start md:items-center">
+                <div class="w-full md:w-3/4 bg-gray-200 rounded-full h-2.5 mb-2 md:mb-0">
+                  <div id="fileStatusBar" class="bg-primary h-2.5 rounded-full" style="width: 0%"></div>
+                </div>
+                <div class="flex items-center space-x-4">
+                  <span class="text-sm text-gray-500" id="processedCount">已处理: 0 个文件</span>
+                  <span class="text-sm text-gray-500" id="currentFile">当前: 无</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="flex justify-between">
+              <button id="refreshAnalysis" class="btn-refresh flex items-center">
+                <i class="fa fa-refresh mr-2"></i>手动刷新分析
+              </button>
+              <button id="toggleAutoRefresh" class="btn-primary flex items-center" id="autoRefreshBtn">
+                <i class="fa fa-sync-alt mr-2"></i>自动刷新: 启用
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-4 gap-8">
+        <!-- 文件列表区域 -->
+        <div class="lg:col-span-1">
+          <div class="bg-white rounded-2xl shadow-xl overflow-hidden h-full flex flex-col card-hover mb-6">
+            <!-- 修改为与其他区块一致的头部 -->
+            <div class="p-4 bg-blue-50 border-b border-gray-100">
+              <h3 class="text-xl font-semibold text-dark flex items-center">
+                <i class="fa fa-file-image-o text-primary mr-2"></i> 文件列表
+              </h3>
+              <!-- 添加颜色图例 -->
+              <div class="flex space-x-2">
+                <div class="flex items-center text-xs">
+                  <div class="w-3 h-3 rounded-full bg-success mr-1"></div>
+                  <span>&lt;50%</span>
+                </div>
+                <div class="flex items-center text-xs">
+                  <div class="w-3 h-3 rounded-full bg-warning mr-1"></div>
+                  <span>50-70%</span>
+                </div>
+                <div class="flex items-center text-xs">
+                  <div class="w-3 h-3 rounded-full bg-danger mr-1"></div>
+                  <span>&gt;70%</span>
+                </div>
+              </div>
+            </div>
+            <!-- 关键修改：添加fixed-file-list类并设置高度 -->
+            <div id="fileList" class="fixed-file-list p-6">
+              <!-- 文件项将通过JavaScript动态添加 -->
+              <div class="text-center text-gray-400">
+                <i class="fa fa-folder-open-o text-4xl mb-2"></i>
+                <p>暂无分析文件</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 结果展示区域 -->
+        <div id="resultBlock" class="lg:col-span-3 space-y-6 opacity-0 transition-opacity duration-500">
+          <!-- 结果信息卡片 -->
+          <div class="bg-white rounded-2xl shadow-xl overflow-hidden card-hover mb-6">
+            <div class="p-4 bg-blue-50 border-b border-gray-100">
+              <h3 class="text-xl font-semibold text-dark flex items-center">
+                <i class="fa fa-info-circle text-primary mr-2"></i>分析结果
+                <span id="currentFileName" class="ml-2 text-sm font-normal text-gray-500">文件: 无</span>
+              </h3>
+            </div>
+            <div class="p-6">
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="p-4 bg-purple-50 rounded-xl">
+                  <div class="flex justify-between items-center mb-2">
+                    <span class="text-gray-600">货物占地比例</span>
+                    <span class="font-bold text-primary" id="cargoRatio">--</span>
+                  </div>
+                  <div class="w-full bg-gray-200 rounded-full h-2.5">
+                    <div id="ratioBar" class="bg-primary h-2.5 rounded-full" style="width: 0%"></div>
+                  </div>
+                </div>
+
+                <div class="p-4 bg-green-50 rounded-xl" id="efficiencyInfo" style="display: none;">
+                  <h4 class="font-semibold text-success mb-2">空间效率评估</h4>
+                  <p id="efficiencyText" class="text-gray-600"></p>
+                </div>
+
+                <div class="p-4 bg-yellow-50 rounded-xl" id="timestampInfo" style="display: none;">
+                  <h4 class="font-semibold text-warning mb-2">分析时间</h4>
+                  <p id="timestampText" class="text-gray-600"></p>
+                </div>
+              </div>
+
+              <div class="mt-6 p-4 bg-red-50 rounded-xl" id="recommendationBox" style="display: none;">
+                <h4 class="font-semibold text-warning mb-2">优化建议</h4>
+                <ul id="recommendations" class="text-gray-600 space-y-2 list-disc pl-5"></ul>
+              </div>
+            </div>
+          </div>
+
+          <!-- 图像分析结果展示区域 -->
+          <div class="bg-white rounded-2xl shadow-xl overflow-hidden card-hover mb-6">
+            <div class="p-4 bg-blue-50 border-b border-gray-100">
+              <h3 class="text-xl font-semibold text-dark flex items-center">
+                <i class="fa fa-image text-primary mr-2"></i> 图像分析结果
+              </h3>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 p-6">
+              <div class="bg-white rounded-xl shadow-md overflow-hidden result-container">
+                <div class="h-[280px] bg-gray-100 flex items-center justify-center relative">
+                  <img id="original-image" src="" alt="原始图像" class="max-h-full max-w-full object-contain">
+                  <div id="noImagePlaceholder" class="text-center text-gray-400">
+                    <i class="fa fa-image text-4xl mb-2"></i>
+                    <p>等待加载原始图像...</p>
+                  </div>
+                </div>
+                <div class="p-4 text-center">
+                  <h4 class="font-semibold text-dark">📷 原始图像</h4>
+                </div>
+              </div>
+
+              <div class="bg-white rounded-xl shadow-md overflow-hidden result-container">
+                <div class="h-[280px] bg-gray-100 flex items-center justify-center relative">
+                  <img id="result-image" src="" alt="分析图像" class="max-h-full max-w-full object-contain">
+                  <div id="noResultPlaceholder" class="text-center text-gray-400">
+                    <i class="fa fa-area-chart text-4xl mb-2"></i>
+                    <p>等待加载分析结果...</p>
+                  </div>
+                </div>
+                <div class="p-4 text-center">
+                  <h4 class="font-semibold text-dark">📊 分割图像</h4>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 详细数据图表 -->
+          <div class="bg-white rounded-2xl shadow-xl overflow-hidden card-hover mb-6">
+            <div class="p-4 bg-blue-50 border-b border-gray-100">
+              <h3 class="text-xl font-semibold text-dark flex items-center">
+                <i class="fa fa-line-chart text-primary mr-2"></i>空间使用趋势
+              </h3>
+            </div>
+            <div class="p-6">
+              <div class="h-64">
+              <canvas id="trendChart"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- 页脚 -->
+  <footer class="bg-dark text-white py-6">
+    <div class="container mx-auto px-4">
+      <div class="flex flex-col md:flex-row justify-between items-center max-w-5xl mx-auto">
+        <!-- 系统名称部分 -->
+        <div class="mb-4 md:mb-0">
+          <h3 class="text-base md:text-lg font-semibold mb-1">智能仓储自动分析系统</h3>
+          <p class="text-gray-400 text-xs md:text-sm">自动监控仓库图像，实时分析空间利用情况</p>
+        </div>
+
+        <!-- 联系我们部分 -->
+        <div class="mb-4 md:mb-0 md:px-4">
+          <h3 class="text-base md:text-lg font-semibold mb-1">技术支持</h3>
+          <ul class="text-gray-400 text-xs md:text-sm space-y-1">
+            <li><i class="fa fa-envelope-o mr-1"></i> ******@***********************</li>
+            <li><i class="fa fa-phone mr-1"></i> ****-*******</li>
+          </ul>
+        </div>
+
+        <!-- 关注我们部分 -->
+        <div>
+          <h3 class="text-base md:text-lg font-semibold mb-1">关注我们</h3>
+          <div class="flex space-x-2">
+            <a href="#" class="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center hover:bg-primary transition-colors text-xs">
+              <i class="fa fa-weixin"></i>
+            </a>
+            <a href="#" class="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center hover:bg-primary transition-colors text-xs">
+              <i class="fa fa-weibo"></i>
+            </a>
+            <a href="#" class="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center hover:bg-primary transition-colors text-xs">
+              <i class="fa fa-linkedin"></i>
+            </a>
+          </div>
+        </div>
+      </div>
+      <div class="mt-6 pt-4 border-t border-gray-700 text-center text-gray-400 text-xs md:text-sm">
+        &copy; 2025 智能仓储自动分析系统 版权所有
+      </div>
+    </div>
+  </footer>
+
+  <!-- 加载中弹窗 -->
+  <div id="loadingModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 opacity-0 pointer-events-none transition-opacity duration-300">
+    <div class="bg-white rounded-2xl shadow-2xl p-6 max-w-md w-full mx-4 transform scale-95 transition-transform duration-300">
+      <div class="text-center">
+        <div class="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
+          <i class="fa fa-spinner fa-spin text-3xl text-primary"></i>
+        </div>
+        <h3 class="text-xl font-bold text-dark mb-2">分析中</h3>
+        <p class="text-gray-600" id="loadingMessage">系统正在处理图像，请稍候...</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 预警弹窗 -->
+  <div id="alarmModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 opacity-0 pointer-events-none transition-opacity duration-300">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 transform scale-95 transition-transform duration-300">
+      <div class="p-6">
+        <div class="flex justify-between items-start">
+          <div class="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
+            <i class="fa fa-exclamation-triangle text-2xl text-danger"></i>
+          </div>
+          <button id="closeAlarm" class="text-gray-400 hover:text-gray-600">
+            <i class="fa fa-times text-xl"></i>
+          </button>
+        </div>
+        <h3 class="text-xl font-bold text-dark mt-4 mb-2">⚠️ 预警提醒</h3>
+        <p class="text-gray-600 mb-6" id="alarmMessage">货物占地比例已超过安全阈值，请及时处理！</p>
+        <div class="flex justify-end">
+          <button id="confirmAlarm" class="btn-primary">
+            我知道了
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 错误弹窗 -->
+  <div id="errorModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 opacity-0 pointer-events-none transition-opacity duration-300">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 transform scale-95 transition-transform duration-300">
+      <div class="p-6">
+        <div class="flex justify-between items-start">
+          <div class="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
+            <i class="fa fa-exclamation-circle text-2xl text-danger"></i>
+          </div>
+          <button id="closeError" class="text-gray-400 hover:text-gray-600">
+            <i class="fa fa-times text-xl"></i>
+          </button>
+        </div>
+        <h3 class="text-xl font-bold text-dark mt-4 mb-2">❌ 加载错误</h3>
+        <p class="text-gray-600 mb-6" id="errorMessage">加载分析结果时出错，请重试。</p>
+        <div class="flex justify-end">
+          <button id="confirmError" class="btn-primary">
+            确定
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+  <script>
+    // 初始化Chart.js图表
+    let trendChart = null;
+    let analysisData = null; // 存储当前分析结果数据
+    let allResults = [];     // 存储所有分析结果
+    let currentFile = null;  // 当前选中的文件
+    let fileMonitorInterval = null; // 文件监控间隔
+    let autoRefreshInterval = null; // 自动刷新间隔
+    let lastCheckedTimestamp = null; // 上次检查的时间戳
+    let isAutoRefreshEnabled = true; // 自动刷新状态
+    const API_BASE_URL = 'http://10.60.208.29:8080'; // 与后端配置一致
+
+    // DOM元素
+    const resultBlock = document.getElementById("resultBlock");
+    const cargoRatio = document.getElementById("cargoRatio");
+    const ratioBar = document.getElementById("ratioBar");
+    const efficiencyInfo = document.getElementById("efficiencyInfo");
+    const efficiencyText = document.getElementById("efficiencyText");
+    const recommendationBox = document.getElementById("recommendationBox");
+    const recommendations = document.getElementById("recommendations");
+    const alarmModal = document.getElementById("alarmModal");
+    const closeAlarm = document.getElementById("closeAlarm");
+    const confirmAlarm = document.getElementById("confirmAlarm");
+    const alarmMessage = document.getElementById("alarmMessage");
+    const systemStatus = document.getElementById("systemStatus");
+    const connectionStatus = document.getElementById("connectionStatus");
+    const lastUpdateTime = document.getElementById("lastUpdateTime");
+    const processedCount = document.getElementById("processedCount");
+    const currentFileElement = document.getElementById("currentFile");
+    const currentFileName = document.getElementById("currentFileName");
+    const timestampInfo = document.getElementById("timestampInfo");
+    const timestampText = document.getElementById("timestampText");
+    const fileList = document.getElementById("fileList");
+    const fileStatusBar = document.getElementById("fileStatusBar");
+    const originalImage = document.getElementById("original-image");
+    const resultImage = document.getElementById("result-image");
+    const noImagePlaceholder = document.getElementById("noImagePlaceholder");
+    const noResultPlaceholder = document.getElementById("noResultPlaceholder");
+    const loadingModal = document.getElementById("loadingModal");
+    const loadingMessage = document.getElementById("loadingMessage");
+    const refreshAnalysis = document.getElementById("refreshAnalysis");
+    const toggleAutoRefresh = document.getElementById("toggleAutoRefresh");
+    const errorModal = document.getElementById("errorModal");
+    const closeError = document.getElementById("closeError");
+    const confirmError = document.getElementById("confirmError");
+    const errorMessage = document.getElementById("errorMessage");
+
+    // 显示加载弹窗
+    function showLoading(message = "系统正在处理，请稍候...") {
+      loadingMessage.textContent = message;
+      loadingModal.classList.remove('opacity-0', 'pointer-events-none');
+      loadingModal.querySelector('div').classList.remove('scale-95');
+      loadingModal.querySelector('div').classList.add('scale-100');
+    }
+
+    // 隐藏加载弹窗
+    function hideLoading() {
+      loadingModal.classList.add('opacity-0', 'pointer-events-none');
+      loadingModal.querySelector('div').classList.remove('scale-100');
+      loadingModal.querySelector('div').classList.add('scale-95');
+    }
+
+    // 显示预警弹窗
+    function showAlarm(message) {
+      alarmMessage.textContent = message;
+      alarmModal.classList.remove('opacity-0', 'pointer-events-none');
+      alarmModal.querySelector('div').classList.remove('scale-95');
+      alarmModal.querySelector('div').classList.add('scale-100');
+    }
+
+    // 关闭预警弹窗
+    function closeAlarmModal() {
+      alarmModal.classList.add('opacity-0', 'pointer-events-none');
+      alarmModal.querySelector('div').classList.remove('scale-100');
+      alarmModal.querySelector('div').classList.add('scale-95');
+    }
+
+    // 显示错误弹窗
+    function showError(message, detail = '') {
+      errorMessage.textContent = message;
+      if (detail) {
+        errorMessage.innerHTML += `<br><small class="text-sm text-gray-500">${detail}</small>`;
+      }
+      errorModal.classList.remove('opacity-0', 'pointer-events-none');
+      errorModal.querySelector('div').classList.remove('scale-95');
+      errorModal.querySelector('div').classList.add('scale-100');
+    }
+
+    // 关闭错误弹窗
+    function closeErrorModal() {
+      errorModal.classList.add('opacity-0', 'pointer-events-none');
+      errorModal.querySelector('div').classList.remove('scale-100');
+      errorModal.querySelector('div').classList.add('scale-95');
+    }
+
+    // 显示通知
+    function showNotification(message, type = 'success') {
+      const notification = document.createElement("div");
+      notification.className = `notification ${type === 'success' ? 'bg-success text-white' : 'bg-danger text-white'}`;
+      notification.textContent = message;
+      notification.style.bottom = "20px";
+      notification.style.right = "20px";
+      notification.style.opacity = "0";
+      notification.style.transform = "translateY(20px)";
+      notification.style.transition = "opacity 0.3s, transform 0.3s";
+
+      document.body.appendChild(notification);
+
+      // 显示通知
+      setTimeout(() => {
+        notification.style.opacity = "1";
+        notification.style.transform = "translateY(0)";
+      }, 100);
+
+      // 3秒后隐藏通知
+      setTimeout(() => {
+        notification.style.opacity = "0";
+        notification.style.transform = "translateY(20px)";
+        setTimeout(() => {
+          document.body.removeChild(notification);
+        }, 300);
+      }, 3000);
+    }
+
+    // 加载图像并显示占位符
+    function loadImage(imgElement, url, placeholder) {
+        // 显示占位符
+        placeholder.style.display = "block";
+
+        // 重置图像
+        imgElement.src = "";
+
+        // 创建新的Image对象来预加载
+        const tempImg = new Image();
+        tempImg.onload = function() {
+            // 图片加载成功后设置src
+            imgElement.src = url;
+            imgElement.onload = function() {
+                // 图片完全加载后隐藏占位符
+                placeholder.style.display = "none";
+            };
+        };
+
+        tempImg.onerror = function() {
+            console.error("图片加载失败:", url);
+            // 加载失败时显示占位符并提示错误
+            placeholder.innerHTML = `
+                <i class="fa fa-exclamation-circle text-4xl mb-2 text-red-500"></i>
+                <p>图片加载失败</p>
+            `;
+            placeholder.style.display = "block";
+        };
+
+        // 设置图片源开始加载
+        tempImg.src = url;
+    }
+
+    // 更新UI数据
+    function updateUIWithData(data) {
+      if (!data) {
+        showError("未获取到分析数据");
+        return;
+      }
+
+      // 显示结果区域
+      resultBlock.style.opacity = "1";
+      resultBlock.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+      // 检查是否有错误
+      if (data.error) {
+        showError("分析失败", data.error);
+        return;
+      }
+
+      // 更新当前文件名
+      currentFileName.textContent = `文件: ${data.file_name}`;
+
+      // 更新货物比例
+      cargoRatio.textContent = data.cargo_ratio_percent + "%";
+      ratioBar.style.width = data.cargo_ratio_percent + "%";
+
+      // 更新时间戳
+      timestampInfo.style.display = "block";
+      timestampText.textContent = data.timestamp;
+
+      // 使用改进的图片加载函数
+      loadImage(originalImage, `${API_BASE_URL}/original-image/${data.file_name}`, noImagePlaceholder);
+      loadImage(resultImage, `${API_BASE_URL}/result-image/${data.file_name}`, noResultPlaceholder);
+
+      // 显示效率评估
+      efficiencyInfo.style.display = "block";
+      let efficiencyClass = "text-success";
+      let efficiencyMsg = "空间利用率良好";
+
+      // 根据不同的占比显示不同的评估内容
+      const ratio = data.cargo_ratio_percent;
+      if (ratio > 80) {
+        efficiencyClass = "text-danger";
+        efficiencyMsg = "空间利用率极高，仓库接近饱和状态，建议立即优化布局";
+      } else if (ratio > 70) {
+        efficiencyClass = "text-warning";
+        efficiencyMsg = "空间利用率较高，仓库接近满负荷运行，建议优化布局";
+      } else if (ratio > 60) {
+        efficiencyClass = "text-warning";
+        efficiencyMsg = "空间利用率中等，可以优化存储布局以提高效率";
+      } else if (ratio > 40) {
+        efficiencyClass = "text-info";
+        efficiencyMsg = "空间利用率良好，有一定的提升空间";
+      } else {
+        efficiencyClass = "text-success";
+        efficiencyMsg = "空间利用率优秀，可能存在空间资源浪费";
+      }
+
+      efficiencyText.innerHTML = `<span class="${efficiencyClass}">${efficiencyMsg}</span>`;
+
+      // 显示优化建议
+      recommendationBox.style.display = "block";
+      recommendations.innerHTML = "";
+
+      const recs = [
+        "定期清理仓库，移除不需要的物品",
+        "优化货架布局，提高空间利用率",
+        "实施先进先出(FIFO)策略，减少货物积压",
+        "考虑使用垂直存储空间",
+        "建立库存管理系统，实时监控库存水平",
+        "重新规划货物存放区域，提高空间分配效率",
+        "考虑使用自动化存储设备，提高空间利用率",
+        "对仓库员工进行培训，提高操作效率"
+      ];
+
+      // 根据不同的占比显示不同的建议
+      let selectedRecs = [];
+      if (ratio > 75) {
+        selectedRecs = [recs[0], recs[1], recs[5], recs[6]];
+      } else if (ratio > 60) {
+        selectedRecs = [recs[1], recs[2], recs[4], recs[7]];
+      } else {
+        selectedRecs = [recs[3], recs[4], recs[5], recs[7]];
+      }
+
+      // 添加随机建议
+      const shuffled = [...recs].sort(() => 0.5 - Math.random());
+      shuffled.slice(0, 1).forEach(rec => {
+        if (!selectedRecs.includes(rec)) {
+          selectedRecs.push(rec);
+        }
+      });
+
+      selectedRecs.forEach(rec => {
+        const li = document.createElement("li");
+        li.textContent = rec;
+        recommendations.appendChild(li);
+      });
+
+      // 创建趋势图表
+      createTrendChart(allResults);
+
+      // 更新状态
+      const now = new Date();
+      const timeStr = now.toLocaleString();
+      lastUpdateTime.textContent = `上次更新: ${timeStr}`;
+
+      // 更新系统状态
+      if (ratio > 70) {
+        systemStatus.className = "status-badge status-badge-red";
+        systemStatus.innerHTML = '<i class="fa fa-circle mr-1"></i>高负荷';
+      } else if (ratio > 50) {
+        systemStatus.className = "status-badge status-badge-yellow";
+        systemStatus.innerHTML = '<i class="fa fa-circle mr-1"></i>正常';
+      } else {
+        systemStatus.className = "status-badge status-badge-green";
+        systemStatus.innerHTML = '<i class="fa fa-circle mr-1"></i>低负荷';
+      }
+
+      // 触发弹窗预警
+      if (data.alarm) {
+        showAlarm(data.alarm_message || "货物占地比例已超过安全阈值，请及时处理！");
+      }
+    }
+
+    // 更新文件列表
+    function updateFileList(results) {
+      fileList.innerHTML = "";
+
+      if (!results || results.length === 0) {
+        fileList.innerHTML = `
+          <div class="p-6 text-center ${results.length === 0 ? 'text-gray-400' : 'text-red-500'}">
+            <i class="fa ${results.length === 0 ? 'fa-folder-open-o' : 'fa-exclamation-circle'} text-4xl mb-2"></i>
+            <p>${results.length === 0 ? '暂无分析文件' : '获取分析结果失败，请检查后端日志'}</p>
+          </div>
+        `;
+        return;
+      }
+
+      // 更新处理文件计数
+      processedCount.textContent = `已处理: ${results.length} 个文件`;
+
+      // 按时间排序，最新的文件在前面
+      results.sort((a, b) => {
+        return new Date(b.timestamp) - new Date(a.timestamp);
+      });
+
+      // 计算进度条宽度
+      fileStatusBar.style.width = "100%";
+
+      // 添加文件项
+      results.forEach(result => {
+        const fileItem = document.createElement("div");
+        fileItem.className = "file-item";
+        fileItem.dataset.filename = result.file_name;
+
+        // 检查是否是当前选中的文件
+        if (currentFile === result.file_name) {
+          fileItem.classList.add("active");
+        }
+
+        // 根据比例值确定颜色类
+        const ratio = result.cargo_ratio_percent;
+        let ratioClass = "ratio-success";
+        if (ratio >= 70) {
+          ratioClass = "ratio-danger";
+        } else if (ratio >= 50) {
+          ratioClass = "ratio-warning";
+        }
+
+        // 设置文件项内容
+        fileItem.innerHTML = `
+          <div class="flex items-center">
+            <i class="fa fa-file-image-o text-primary mr-3"></i>
+            <div>
+              <p class="font-medium text-dark">${result.file_name}</p>
+              <p class="text-xs text-gray-500">${result.timestamp}</p>
+            </div>
+          </div>
+          <div class="${ratioClass}">${result.cargo_ratio_percent}%</div>
+        `;
+
+        // 添加点击事件
+        fileItem.addEventListener("click", function() {
+          console.log("选择文件:", result.file_name);
+          selectFile(result.file_name);
+        });
+
+        // 添加到文件列表
+        fileList.appendChild(fileItem);
+      });
+
+      console.log(`成功渲染文件列表，共 ${results.length} 个文件`);
+    }
+
+    // 选择文件
+    function selectFile(filename) {
+      // 更新当前文件
+      currentFile = filename;
+
+      // 更新文件列表中的选中状态
+      const fileItems = document.querySelectorAll(".file-item");
+      fileItems.forEach(item => {
+        if (item.dataset.filename === filename) {
+          item.classList.add("active");
+        } else {
+          item.classList.remove("active");
+        }
+      });
+
+      // 从结果列表中找到选中的文件数据
+      const result = allResults.find(item => item.file_name === filename);
+
+      if (result) {
+        // 更新UI
+        updateUIWithData(result);
+
+        // 更新当前文件显示
+        currentFileElement.textContent = `当前: ${filename}`;
+      } else {
+        showError(`未找到文件 ${filename} 的分析结果`);
+      }
+    }
+
+    // 创建趋势图表
+    function createTrendChart(results) {
+      const ctx = document.getElementById("trendChart").getContext("2d");
+
+      // 如果图表已存在，销毁它
+      if (trendChart) {
+        trendChart.destroy();
+      }
+
+      if (!results || results.length === 0) {
+        // 没有数据时显示空图表
+        document.getElementById("trendChart").parentElement.innerHTML = `
+          <div class="h-full flex items-center justify-center text-gray-400">
+            <i class="fa fa-chart-line text-4xl mr-3"></i>
+            <p>暂无趋势数据</p>
+          </div>
+        `;
+        return;
+      }
+
+      // 按时间降序排序（最新的在前面）
+      results.sort((a, b) => {
+        return new Date(b.timestamp) - new Date(a.timestamp);
+      });
+
+      // 只取最近30条记录
+      const recentResults = results.slice(0, 30);
+
+      // 按时间升序排序（旧的在前面，新的在后面）
+      recentResults.sort((a, b) => {
+        return new Date(a.timestamp) - new Date(b.timestamp);
+      });
+
+      // 准备图表数据
+      const labels = recentResults.map(item => {
+        const date = new Date(item.timestamp);
+        return `${date.getMonth() + 1}/${date.getDate()} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+      });
+
+      const data = recentResults.map(item => item.cargo_ratio_percent);
+
+      // 创建图表
+      trendChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: '货物占地比例 (%)',
+            data: data,
+            borderColor: '#3B82F6',
+            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+            borderWidth: 2,
+            tension: 0.3,
+            fill: true,
+            pointBackgroundColor: '#3B82F6',
+            pointBorderColor: '#fff',
+            pointBorderWidth: 2,
+            pointRadius: 4,
+            pointHoverRadius: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              display: true,
+              position: 'top',
+            },
+            tooltip: {
+              mode: 'index',
+              intersect: false,
+              callbacks: {
+                label: function(context) {
+                  return `货物占地比例: ${context.raw}%`;
+                }
+              }
+            }
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              max: 100,
+              ticks: {
+                callback: function(value) {
+                  return value + '%';
+                }
+              },
+              grid: {
+                drawBorder: false,
+              }
+            },
+            x: {
+              grid: {
+                display: false,
+                drawBorder: false,
+              }
+            }
+          },
+          interaction: {
+            mode: 'nearest',
+            axis: 'x',
+            intersect: false
+          },
+          animation: {
+            duration: 1000,
+            easing: 'easeOutQuart'
+          }
+        }
+      });
+    }
+
+    // 获取文件列表
+    async function fetchFileList() {
+      showLoading("正在获取文件列表...");
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/results`);
+
+        if (!response.ok) {
+          throw new Error(`HTTP错误! 状态: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        // 保存所有结果
+        allResults = data;
+
+        // 更新文件列表
+        updateFileList(allResults);
+
+        // 如果有文件，默认选择第一个
+        if (allResults.length > 0) {
+          selectFile(allResults[0].file_name);
+        }
+
+        console.log("成功获取文件列表");
+      } catch (error) {
+        console.error("获取文件列表失败:", error);
+        showError("获取文件列表失败", "请检查服务器连接或后端服务状态");
+      } finally {
+        hideLoading();
+      }
+    }
+
+    // 获取监控状态
+    async function fetchMonitorStatus() {
+      try {
+        const response = await fetch(`${API_BASE_URL}/status`);
+
+        if (!response.ok) {
+          throw new Error(`HTTP错误! 状态: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        // 更新系统状态
+        if (data.status === "监控中") {
+          systemStatus.className = "status-badge status-badge-green";
+          systemStatus.innerHTML = '<i class="fa fa-circle mr-1"></i>监控中';
+          connectionStatus.className = "status-badge status-badge-green";
+          connectionStatus.innerHTML = '<i class="fa fa-check mr-1"></i>已连接';
+        } else if (data.status.includes("错误")) {
+          systemStatus.className = "status-badge status-badge-red";
+          systemStatus.innerHTML = `<i class="fa fa-circle mr-1"></i>${data.status}`;
+          connectionStatus.className = "status-badge status-badge-red";
+          connectionStatus.innerHTML = '<i class="fa fa-exclamation-circle mr-1"></i>错误';
+        } else {
+          systemStatus.className = "status-badge status-badge-yellow";
+          systemStatus.innerHTML = `<i class="fa fa-circle mr-1"></i>${data.status}`;
+          connectionStatus.className = "status-badge status-badge-yellow";
+          connectionStatus.innerHTML = '<i class="fa fa-clock-o mr-1"></i>等待中';
+        }
+
+        // 更新文件处理进度
+        processedCount.textContent = `已处理: ${data.processed_count} 个文件`;
+        fileStatusBar.style.width = "100%";
+
+        // 更新当前处理文件
+        if (data.current_file) {
+          currentFileElement.textContent = `当前: ${getFileNameFromPath(data.current_file)}`;
+        } else {
+          currentFileElement.textContent = "当前: 无";
+        }
+
+        console.log("成功获取监控状态");
+      } catch (error) {
+        console.error("获取监控状态失败:", error);
+        systemStatus.className = "status-badge status-badge-red";
+        systemStatus.innerHTML = '<i class="fa fa-circle mr-1"></i>已断开';
+        connectionStatus.className = "status-badge status-badge-red";
+        connectionStatus.innerHTML = '<i class="fa fa-exclamation-triangle mr-1"></i>连接失败';
+      }
+    }
+
+    // 从文件路径中提取文件名
+    function getFileNameFromPath(path) {
+      return path.split('/').pop();
+    }
+
+    // 手动刷新分析
+    async function refreshAnalysisManually() {
+      if (systemStatus.className.includes("status-badge-red")) {
+        showError("系统状态异常", "后端服务可能已停止，请先检查后端运行状态");
+        return;
+      }
+
+      showLoading("正在刷新分析结果...");
+
+      try {
+        // 简单的GET请求刷新
+        const response = await fetch(`${API_BASE_URL}/detect`);
+
+        if (!response.ok) {
+          throw new Error(`HTTP错误! 状态: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        // 刷新文件列表
+        await fetchFileList();
+
+        showNotification("分析结果已刷新", 'success');
+      } catch (error) {
+        console.error("刷新分析失败:", error);
+        showError("刷新分析失败", "请检查服务器连接或后端服务状态");
+      } finally {
+        hideLoading();
+      }
+    }
+
+    // 检查是否有新结果
+    async function checkForNewResults() {
+      if (isAutoRefreshEnabled) {
+        try {
+          // 构建请求URL，带上上次检查的时间戳
+          let url = `${API_BASE_URL}/has_new_results`;
+          if (lastCheckedTimestamp) {
+            url += `?timestamp=${encodeURIComponent(lastCheckedTimestamp)}`;
+          }
+
+          const response = await fetch(url);
+          const data = await response.json();
+
+          if (data.has_new) {
+            // 有新结果，刷新文件列表
+            console.log("检测到新的分析结果，正在刷新...");
+            await fetchFileList();
+            lastCheckedTimestamp = data.timestamp;
+
+            showNotification("已自动更新分析结果", 'success');
+          } else {
+            // 没有新结果，更新时间戳
+            if (data.timestamp) {
+              lastCheckedTimestamp = data.timestamp;
+            }
+          }
+        } catch (error) {
+          console.error("检查新结果时出错:", error);
+          showNotification("自动刷新失败，请检查网络连接", 'error');
+        }
+      }
+    }
+
+    // 切换自动刷新状态
+    function toggleAutoRefreshStatus() {
+      isAutoRefreshEnabled = !isAutoRefreshEnabled;
+
+      if (isAutoRefreshEnabled) {
+        autoRefreshInterval = setInterval(checkForNewResults, 6000); // 每6秒检查一次
+        toggleAutoRefresh.innerHTML = '<i class="fa fa-sync-alt mr-2"></i>自动刷新: 启用';
+        toggleAutoRefresh.className = "btn-primary flex items-center";
+        showNotification("自动刷新已启用", 'success');
+      } else {
+        clearInterval(autoRefreshInterval);
+        autoRefreshInterval = null;
+        toggleAutoRefresh.innerHTML = '<i class="fa fa-sync-alt mr-2"></i>自动刷新: 禁用';
+        toggleAutoRefresh.className = "btn-refresh flex items-center";
+        showNotification("自动刷新已禁用", 'success');
+      }
+    }
+
+    // 初始化自动刷新
+    function initAutoRefresh() {
+      // 设置定时检查
+      autoRefreshInterval = setInterval(checkForNewResults, 6000);
+      console.log("已启动自动刷新，每6秒检查一次新结果");
+    }
+
+    // 页面加载完成后初始化
+    document.addEventListener('DOMContentLoaded', async function() {
+      console.log("页面加载完成，开始初始化...");
+
+      // 初始化自动刷新
+      initAutoRefresh();
+
+      // 获取监控状态
+      await fetchMonitorStatus();
+
+      // 获取文件列表
+      await fetchFileList();
+
+      // 设置定期获取监控状态
+      fileMonitorInterval = setInterval(fetchMonitorStatus, 5000);
+
+      // 绑定手动刷新按钮事件
+      refreshAnalysis.addEventListener('click', refreshAnalysisManually);
+
+      // 绑定自动刷新切换按钮事件
+      toggleAutoRefresh.addEventListener('click', toggleAutoRefreshStatus);
+
+      console.log("页面初始化完成");
+
+       // 绑定预警弹窗事件
+      const closeAlarmBtn = document.getElementById('closeAlarm');
+      const confirmAlarmBtn = document.getElementById('confirmAlarm');
+
+      if (closeAlarmBtn) {
+        closeAlarmBtn.addEventListener('click', closeAlarmModal);
+      }
+
+      if (confirmAlarmBtn) {
+        confirmAlarmBtn.addEventListener('click', closeAlarmModal);
+      }
+
+      // 点击背景关闭弹窗
+      alarmModal.addEventListener('click', function(e) {
+        if (e.target === alarmModal) {
+          closeAlarmModal();
+        }
+      });
+    });
+
+    // 绑定错误弹窗关闭事件
+    const closeErrorBtn = document.getElementById('closeError');
+    const confirmErrorBtn = document.getElementById('confirmError');
+
+    if (closeErrorBtn) {
+      closeErrorBtn.addEventListener('click', closeErrorModal);
+    }
+
+    if (confirmErrorBtn) {
+      confirmErrorBtn.addEventListener('click', closeErrorModal);
+    }
+
+    // 点击背景关闭弹窗
+    errorModal.addEventListener('click', function(e) {
+      if (e.target === errorModal) {
+        closeErrorModal();
+      }
+    });
+
+
+    // 页面卸载时清理
+    window.addEventListener('beforeunload', function() {
+      if (fileMonitorInterval) {
+        clearInterval(fileMonitorInterval);
+      }
+
+      if (autoRefreshInterval) {
+        clearInterval(autoRefreshInterval);
+      }
+    });
+
+  </script>
+</body>
+</html>
