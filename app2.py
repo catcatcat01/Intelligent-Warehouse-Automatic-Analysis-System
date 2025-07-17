@@ -16,9 +16,9 @@ import json
 
 
 # 飞书应用配置
-FEISHU_APP_ID = "cli_a8e897b12f27500e"  # 替换为你的飞书应用ID
-FEISHU_APP_SECRET = "bQtAu5D4DuECIa4t5zK0je3QNqK4e5m8"  # 替换为你的飞书应用密钥
-FEISHU_USER_ID = "10407843"  # 要通知的具体用户ID
+FEISHU_APP_ID = ""  # 替换为你的飞书应用ID
+FEISHU_APP_SECRET = ""  # 替换为你的飞书应用密钥
+FEISHU_USER_ID = ""  # 要通知的具体用户ID
 
 # 缓存访问令牌和过期时间
 feishu_token_cache = {
@@ -59,7 +59,7 @@ def send_feishu_message(result):
         return False
 
     # 构建详情链接，指向原始图片
-    base_url = "http://10.60.208.29:8080"  # 替换为实际服务器地址
+    base_url = ""  # 替换为实际服务器地址
     detail_url = f"{base_url}/original-image/{result.get('file_name','')}"
     
     # 构建消息内容
@@ -159,9 +159,9 @@ model = load_model()
 # MySQL数据库配置
 DB_CONFIG = {
     'host': 'localhost',
-    'user': 'root',
-    'password': '123456',
-    'database': 'warehouse_analysis'
+    'user': '',    # 数据库用户名
+    'password': '',     # 数据库密码
+    'database': 'warehouse_analysis'    # 表名
 }
 
 
